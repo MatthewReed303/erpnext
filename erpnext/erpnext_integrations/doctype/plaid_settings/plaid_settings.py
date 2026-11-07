@@ -360,9 +360,15 @@ def automatic_synchronization():
 def enqueue_synchronization():
 	frappe.has_permission("Plaid Settings", throw=True)
 
+	plaid_banks = frappe.get_all("Bank", filters={"plaid_access_token": ["is", "set"]}, pluck="name")
 	plaid_accounts = frappe.get_all(
 		"Bank Account",
-		filters={"integration_id": ["!=", ""], "disabled": 0, "is_company_account": 1},
+		filters={
+			"integration_id": ["!=", ""],
+			"bank": ["in", plaid_banks],
+			"disabled": 0,
+			"is_company_account": 1,
+		},
 		fields=["name", "bank"],
 	)
 
