@@ -126,6 +126,10 @@ class TestWiseSettings(ERPNextTestSuite):
 		self.assertEqual(deposit.reference_number, "SAL-ORD-2026-00042")
 		self.assertEqual(deposit.bank_party_name, "Jane Buyer")
 		self.assertEqual(deposit.bank_party_account_number, "TESTUS33 1234")
+		self.assertEqual(
+			deposit.transaction_type,
+			"Wire Transfer" if frappe.db.exists("Mode of Payment", "Wire Transfer") else None,
+		)
 
 		withdrawal = frappe.get_doc("Bank Transaction", {"transaction_id": "TRANSFER-2", "bank_account": usd})
 		self.assertEqual(withdrawal.withdrawal, 25.0)

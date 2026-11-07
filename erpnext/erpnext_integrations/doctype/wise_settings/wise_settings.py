@@ -13,6 +13,15 @@ from frappe.utils.data import convert_utc_to_system_timezone
 from erpnext.erpnext_integrations.doctype.wise_settings.wise_connector import WiseConnector
 
 
+MODES_OF_PAYMENT = {
+	"DEPOSIT": "Wire Transfer",
+	"MONEY_ADDED": "Wire Transfer",
+	"TRANSFER": "Wire Transfer",
+	"DIRECT_DEBIT": "Wire Transfer",
+	"CARD": "Credit Card",
+}
+
+
 class WiseSettings(Document):
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
@@ -260,7 +269,7 @@ def new_bank_transaction(transaction, bank_account):
 			"included_fee": flt((transaction.get("totalFees") or {}).get("value")),
 			"currency": transaction["amount"]["currency"],
 			"transaction_id": transaction["referenceNumber"],
-			"transaction_type": details.get("type"),
+			"transaction_type": mode_of_payment(details.get("type")),
 			"reference_number": details.get("paymentReference") or transaction["referenceNumber"],
 			"description": details.get("description"),
 			"bank_party_name": details.get("senderName"),
@@ -270,6 +279,13 @@ def new_bank_transaction(transaction, bank_account):
 	bank_transaction.insert()
 	bank_transaction.submit()
 	return bank_transaction.name
+
+
+def mode_of_payment(wise_type):
+	"""The Mode of Payment for a kind of Wise transaction, which the Bank Reconciliation Tool uses for
+	the vouchers it makes, when the site has it."""
+	mode = MODES_OF_PAYMENT.get(wise_type)
+	return mode if mode and frappe.db.exists("Mode of Payment", mode) else None
 
 
 def transaction_date(transaction):
