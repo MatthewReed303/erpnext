@@ -15,6 +15,7 @@
 						"account_type": "Bank"
 					},
 					"account_number": "11010",
+					"account_type": "Bank",
 					"is_group": 1
 				},
 				"Cash on Hand": {
