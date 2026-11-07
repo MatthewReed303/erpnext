@@ -2508,6 +2508,64 @@ class TestSalesInvoice(ERPNextTestSuite):
 			flt(si.rounded_total + si.total_advance, si.precision("outstanding_amount")),
 		)
 
+	def test_advance_from_foreign_currency_order_without_taxes(self):
+		"""An order in a foreign currency, without taxes and with rounded total disabled, for a customer
+		whose receivable account is in the company currency, paid in advance in full. Its base grand
+		total is the sum of the converted rows, a rounding cent above grand_total * conversion_rate
+		here, and the invoice made from it must still take the whole advance."""
+		from erpnext.selling.doctype.sales_order.mapper import make_sales_invoice as make_si_from_so
+		from erpnext.selling.doctype.sales_order.test_sales_order import make_sales_order
+
+		rows = [
+			("_Test Item", 1, 77.69),
+			("_Test Item 2", 2, 44.15),
+			("_Test Extra Item 1", 1, 6.71),
+			("_Test Extra Item 2", 1, 1.73),
+		]
+		so = make_sales_order(
+			currency="USD",
+			item_list=[
+				{
+					"item_code": item_code,
+					"qty": qty,
+					"rate": rate,
+					"warehouse": "_Test Warehouse - _TC",
+					"delivery_date": add_days(nowdate(), 10),
+				}
+				for item_code, qty, rate in rows
+			],
+			do_not_save=True,
+		)
+		so.conversion_rate = 1.7892
+		so.disable_rounded_total = 1
+		so.insert()
+		so.submit()
+		self.assertFalse(so.taxes)
+		self.assertEqual(so.grand_total, 174.43)
+		self.assertEqual(so.base_grand_total, 312.10)
+		self.assertEqual(flt(so.grand_total * so.conversion_rate, 2), 312.09)
+
+		pe = get_payment_entry("Sales Order", so.name, bank_account="_Test Cash - _TC")
+		pe.reference_no = "1"
+		pe.reference_date = nowdate()
+		pe.insert()
+		pe.submit()
+		so.reload()
+		self.assertEqual(so.party_account_currency, "INR")
+		self.assertEqual(so.advance_paid, 312.10)
+
+		si = make_si_from_so(so.name)
+		si.allocate_advances_automatically = 1
+		si.only_include_allocated_payments = 1
+		si.insert()
+		si.submit()
+		self.assertEqual(si.disable_rounded_total, 1)
+		self.assertEqual(si.base_grand_total, 312.10)
+		self.assertEqual(
+			[(row.reference_name, row.allocated_amount) for row in si.advances], [(pe.name, 312.10)]
+		)
+		self.assertEqual(si.outstanding_amount, 0)
+
 	def test_outstanding_amount_after_advance_payment_entry_cancellation(self):
 		"""Test impact of advance PE submission/cancellation on SI and SO."""
 		from erpnext.selling.doctype.sales_order.test_sales_order import make_sales_order

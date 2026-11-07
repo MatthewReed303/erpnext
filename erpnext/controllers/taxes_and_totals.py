@@ -1170,9 +1170,12 @@ class calculate_taxes_and_totals:
 					flt(self.doc.write_off_amount) * self.doc.conversion_rate,
 					self.doc.precision("base_write_off_amount"),
 				)
+				# compare with the company currency total that set_advances and the outstanding amount use;
+				# without taxes it is the sum of the converted rows, which can differ from
+				# grand_total * conversion_rate by a rounding difference
+				base_grand_total = self.doc.base_rounded_total or self.doc.base_grand_total
 				invoice_total = (
-					flt(grand_total * self.doc.conversion_rate, self.doc.precision("base_grand_total"))
-					- base_write_off_amount
+					flt(base_grand_total, self.doc.precision("base_grand_total")) - base_write_off_amount
 				)
 
 			if invoice_total > 0 and self.doc.total_advance > invoice_total:
