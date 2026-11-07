@@ -1,0 +1,107 @@
+{
+ "actions": [],
+ "creation": "2026-11-07 19:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "column_break_enabled",
+  "automatic_sync",
+  "section_break_api",
+  "api_token",
+  "environment",
+  "column_break_api",
+  "company",
+  "profile_id",
+  "profile_name"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "column_break_enabled",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "depends_on": "enabled",
+   "description": "Import new transactions from Wise every five minutes",
+   "fieldname": "automatic_sync",
+   "fieldtype": "Check",
+   "label": "Synchronize Automatically"
+  },
+  {
+   "depends_on": "enabled",
+   "fieldname": "section_break_api",
+   "fieldtype": "Section Break",
+   "label": "Wise Account"
+  },
+  {
+   "description": "A personal API token from Wise (Settings > Developer tools > API tokens). Read only access is enough.",
+   "fieldname": "api_token",
+   "fieldtype": "Password",
+   "label": "API Token",
+   "mandatory_depends_on": "enabled"
+  },
+  {
+   "default": "Production",
+   "fieldname": "environment",
+   "fieldtype": "Select",
+   "label": "Environment",
+   "options": "Production\nSandbox"
+  },
+  {
+   "fieldname": "column_break_api",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "mandatory_depends_on": "enabled",
+   "options": "Company"
+  },
+  {
+   "description": "The Wise profile whose balances are imported. Use Select Profile to choose it.",
+   "fieldname": "profile_id",
+   "fieldtype": "Data",
+   "label": "Profile ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "profile_name",
+   "fieldtype": "Data",
+   "label": "Profile",
+   "read_only": 1
+  }
+ ],
+ "icon": "landmark",
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-11-07 19:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "ERPNext Integrations",
+ "name": "Wise Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

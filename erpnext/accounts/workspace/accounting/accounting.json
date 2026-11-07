@@ -575,6 +575,16 @@
   },
   {
    "hidden": 0,
+   "is_query_report": 0,
+   "label": "Wise Settings",
+   "link_count": 0,
+   "link_to": "Wise Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
    "is_query_report": 1,
    "label": "Bank Reconciliation Statement",
    "link_count": 0,
@@ -924,7 +934,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-10-04 21:00:00.000000",
+ "modified": "2026-11-07 19:00:00.000000",
  "modified_by": "Administrator",
  "module": "Accounts",
  "module_onboarding": "Accounting Onboarding",
