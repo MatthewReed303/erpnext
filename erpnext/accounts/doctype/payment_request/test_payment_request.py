@@ -117,6 +117,32 @@ class TestPaymentRequest(ERPNextTestSuite):
 	@ERPNextTestSuite.change_settings(
 		"Accounts Settings", {"allow_multi_currency_invoices_against_single_party_account": 1}
 	)
+	def test_the_email_links_to_the_payment_page(self):
+		request = frappe.new_doc("Payment Request")
+		request.update(
+			{
+				"reference_doctype": "Sales Order",
+				"reference_name": "SO-TEST",
+				"grand_total": 100,
+				"payment_url": "https://example.com/pay?x=1&y=2",
+				# the Payment Gateway Account's default message, which has no link
+				"message": "Please click on the link below to make your payment",
+			}
+		)
+		order = frappe._dict(doctype="Sales Order", name="SO-TEST", contact_person=None)
+		with patch("frappe.get_doc", return_value=order):
+			message = request.get_message()
+			self.assertIn("Please click on the link below", message)
+			self.assertIn('href="https://example.com/pay?x=1&amp;y=2"', message)
+
+			# a message that places the link itself gets it once
+			request.message = '<a href="{{ payment_url }}">Pay now</a>'
+			self.assertEqual(request.get_message().count("https://example.com/pay"), 1)
+
+			# no message: ERPNext's own wording, with the link
+			request.message = None
+			self.assertIn("https://example.com/pay", request.get_message())
+
 	def test_payment_request_linkings(self):
 		so_inr = make_sales_order(currency="INR", do_not_save=True)
 		so_inr.disable_rounded_total = 1
