@@ -21,12 +21,17 @@ frappe.ui.form.on("Wise Settings", {
 				freeze: true,
 				freeze_message: __("Reading your Wise balances..."),
 				callback: (r) => {
+					const accounts = r.message || [];
 					frappe.msgprint({
 						title: __("Bank Accounts"),
-						message: (r.message || [])
-							.map((name) => frappe.utils.get_form_link("Bank Account", name, true))
-							.join("<br>"),
-						indicator: "green",
+						message: accounts.length
+							? accounts
+									.map((name) => frappe.utils.get_form_link("Bank Account", name, true))
+									.join("<br>")
+							: __(
+									"This Wise profile has no balances. Open a balance in Wise, or select another profile."
+							  ),
+						indicator: accounts.length ? "green" : "orange",
 					});
 				},
 			});
