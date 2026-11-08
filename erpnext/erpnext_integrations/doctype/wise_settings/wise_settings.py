@@ -252,6 +252,11 @@ def sync_transactions():
 			except Exception:
 				frappe.db.rollback(save_point="wise_sync_transaction")
 				failed.append(transaction_date(transaction))
+				# it is read again on every sync until it imports; said once a day
+				key = f"wise_failed:{bank_account.name}:{transaction.get('referenceNumber')}"
+				if frappe.cache.get_value(key):
+					continue
+				frappe.cache.set_value(key, 1, expires_in_sec=24 * 60 * 60)
 				frappe.log_error(
 					_("Wise transaction {0} could not be imported").format(
 						transaction.get("referenceNumber")
