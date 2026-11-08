@@ -12,6 +12,8 @@ from frappe.utils.data import convert_utc_to_system_timezone
 
 from erpnext.erpnext_integrations.doctype.wise_settings.wise_connector import WiseConnector
 
+# statements are read again from a few days back, for transactions Wise dates earlier than when they appear
+SYNC_OVERLAP_DAYS = 7
 
 MODES_OF_PAYMENT = {
 	"DEPOSIT": "Wire Transfer",
@@ -184,7 +186,14 @@ def get_gl_account(company, account_name, currency):
 
 def automatic_synchronization():
 	settings = frappe.get_single("Wise Settings")
-	if settings.enabled and settings.automatic_sync:
+	# only once it is set up, so an unfinished setup doesn't fail every five minutes
+	if (
+		settings.enabled
+		and settings.automatic_sync
+		and settings.profile_id
+		and settings.company
+		and settings.get_password("api_token", raise_exception=False)
+	):
 		enqueue_synchronization()
 
 
@@ -201,13 +210,19 @@ def enqueue_synchronization():
 
 
 def sync_transactions():
-	"""Import the new transactions of each Wise balance that has a Bank Account, from the date of the last
-	one imported, or the last twelve months for a new Bank Account."""
+	"""Import the new transactions of each Wise balance that has a Bank Account, from the date it was
+	last read up to (a few days earlier, for transactions Wise dates back), or the last twelve months
+	for a new Bank Account."""
 	settings = get_settings()
 	wise = WiseConnector(settings)
 	end = utc_now()
+	try:
+		balances = wise.balances(settings.profile_id)
+	except Exception:
+		frappe.log_error(_("Wise balances could not be read"), reference_doctype="Wise Settings")
+		return
 
-	for balance in wise.balances(settings.profile_id):
+	for balance in balances:
 		bank_account = frappe.db.get_value(
 			"Bank Account",
 			{"integration_id": str(balance["id"]), "company": settings.company, "disabled": 0},
@@ -218,7 +233,7 @@ def sync_transactions():
 			continue
 
 		start = get_datetime(bank_account.last_integration_date or add_months(getdate(), -12))
-		start = start.replace(tzinfo=datetime.UTC) - datetime.timedelta(days=1)
+		start = start.replace(tzinfo=datetime.UTC) - datetime.timedelta(days=SYNC_OVERLAP_DAYS)
 		try:
 			statement = wise.statement(settings.profile_id, balance["id"], balance["currency"], start, end)
 		except Exception:
@@ -229,14 +244,14 @@ def sync_transactions():
 			)
 			continue
 
-		last_date = None
+		failed = []
 		for transaction in reversed(statement.get("transactions") or []):
 			frappe.db.savepoint("wise_sync_transaction")
 			try:
-				if new_bank_transaction(transaction, bank_account.name):
-					last_date = transaction_date(transaction)
+				new_bank_transaction(transaction, bank_account.name)
 			except Exception:
 				frappe.db.rollback(save_point="wise_sync_transaction")
+				failed.append(transaction_date(transaction))
 				frappe.log_error(
 					_("Wise transaction {0} could not be imported").format(
 						transaction.get("referenceNumber")
@@ -245,8 +260,9 @@ def sync_transactions():
 					reference_name=bank_account.name,
 				)
 
-		if last_date:
-			frappe.db.set_value("Bank Account", bank_account.name, "last_integration_date", last_date)
+		# read up to now, or up to the first transaction that couldn't be imported, which is read again
+		read_to = min(failed) if failed else convert_utc_to_system_timezone(end).date()
+		frappe.db.set_value("Bank Account", bank_account.name, "last_integration_date", read_to)
 
 
 def new_bank_transaction(transaction, bank_account):

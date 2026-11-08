@@ -5,11 +5,14 @@ from typing import ClassVar
 from unittest.mock import patch
 
 import frappe
+from frappe.utils import convert_utc_to_system_timezone
 
 from erpnext.erpnext_integrations.doctype.wise_settings.wise_settings import (
 	add_bank_accounts,
+	automatic_synchronization,
 	enqueue_synchronization,
 	sync_transactions,
+	utc_now,
 )
 from erpnext.tests.utils import ERPNextTestSuite
 
@@ -136,8 +139,10 @@ class TestWiseSettings(ERPNextTestSuite):
 		self.assertEqual(withdrawal.included_fee, 1.5)
 		self.assertEqual(withdrawal.reference_number, "TRANSFER-2")
 
+		# read up to today, so the next sync asks only for what came after
 		self.assertEqual(
-			str(frappe.db.get_value("Bank Account", usd, "last_integration_date")), str(withdrawal.date)
+			str(frappe.db.get_value("Bank Account", usd, "last_integration_date")),
+			str(convert_utc_to_system_timezone(utc_now()).date()),
 		)
 
 		# a second sync imports nothing twice
@@ -152,3 +157,34 @@ class TestWiseSettings(ERPNextTestSuite):
 	def test_sync_needs_permission(self):
 		with self.set_user("Guest"), self.assertRaises(frappe.PermissionError):
 			enqueue_synchronization()
+
+	def test_a_transaction_that_fails_is_read_again(self):
+		usd = add_bank_accounts()[0]
+		FakeWise.transactions = [
+			wise_transaction("DEPOSIT-LATER", 5.0, date="2026-11-04T01:00:00.000000Z"),
+			wise_transaction("DEPOSIT-BAD", 7.0, date="2026-11-02T01:00:00.000000Z"),
+		]
+		from erpnext.erpnext_integrations.doctype.wise_settings import wise_settings
+
+		real = wise_settings.new_bank_transaction
+
+		def failing(transaction, bank_account):
+			if transaction["referenceNumber"] == "DEPOSIT-BAD":
+				raise frappe.ValidationError("bad")
+			return real(transaction, bank_account)
+
+		with patch(f"{WISE_SETTINGS}.new_bank_transaction", side_effect=failing), patch("frappe.log_error"):
+			sync_transactions()
+		# the date stays at the one that failed, so the next sync reads it again
+		self.assertEqual(
+			str(frappe.db.get_value("Bank Account", usd, "last_integration_date")),
+			str(wise_settings.transaction_date(FakeWise.transactions[1])),
+		)
+		sync_transactions()
+		self.assertTrue(frappe.db.exists("Bank Transaction", {"transaction_id": "DEPOSIT-BAD"}))
+
+	def test_automatic_sync_waits_for_the_setup(self):
+		frappe.db.set_single_value("Wise Settings", {"automatic_sync": 1, "profile_id": None})
+		with patch(f"{WISE_SETTINGS}.enqueue_synchronization") as enqueue:
+			automatic_synchronization()
+		enqueue.assert_not_called()

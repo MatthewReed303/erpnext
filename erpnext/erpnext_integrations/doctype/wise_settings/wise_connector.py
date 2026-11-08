@@ -23,6 +23,7 @@ class WiseConnector:
 			self.host + path,
 			headers={"Authorization": f"Bearer {self.token}"},
 			params=params,
+			timeout=60,
 		)
 
 	def profiles(self):
