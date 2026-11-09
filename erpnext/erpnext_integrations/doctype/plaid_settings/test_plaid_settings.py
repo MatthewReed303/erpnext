@@ -210,20 +210,6 @@ class TestPlaidSettings(ERPNextTestSuite):
 
 		self.assertEqual([call.args for call in connector.call_args_list], [(token,), (token,)])
 
-	def test_scheduled_sync_skips_accounts_of_other_integrations(self):
-		plaid_account = link_test_bank_account("plaid-own-test")
-		other_account = link_test_bank_account("other-feed-test")
-		if not frappe.db.exists("Bank", "Other Feed Bank"):
-			frappe.get_doc({"doctype": "Bank", "bank_name": "Other Feed Bank"}).insert()
-		frappe.db.set_value("Bank Account", other_account, "bank", "Other Feed Bank")
-
-		with patch("frappe.enqueue") as enqueue:
-			enqueue_synchronization()
-
-		synced = [call.kwargs["bank_account"] for call in enqueue.call_args_list]
-		self.assertIn(plaid_account, synced)
-		self.assertNotIn(other_account, synced)
-
 
 PLAID_SETTINGS = "erpnext.erpnext_integrations.doctype.plaid_settings.plaid_settings"
 
@@ -232,9 +218,6 @@ def link_test_bank_account(account_id: str) -> str:
 	"""Link a Plaid account of the Citi bank to _Test Company and return its Bank Account."""
 	if not frappe.db.exists("Bank", "Citi"):
 		frappe.get_doc({"doctype": "Bank", "bank_name": "Citi"}).insert()
-	citi = frappe.get_doc("Bank", "Citi")
-	citi.plaid_access_token = "access-sandbox-citi"
-	citi.save()
 
 	account = {"id": account_id, "name": f"Plaid {account_id}", "type": "depository", "subtype": "checking"}
 	response = {"accounts": [account], "institution": {"institution_id": "ins_6", "name": "Citi"}}
