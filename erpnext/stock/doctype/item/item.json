@@ -177,8 +177,7 @@
    "link_filters": "[[\"Item\",\"has_variants\",\"=\",1]]",
    "options": "Item",
    "read_only": 1,
-   "search_index": 1,
-   "set_only_once": 1
+   "search_index": 1
   },
   {
    "allow_in_quick_entry": 1,
@@ -1139,7 +1138,7 @@
  "image_field": "image",
  "links": [],
  "make_attachments_public": 1,
- "modified": "2026-11-05 12:00:00.000000",
+ "modified": "2026-11-10 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Stock",
  "name": "Item",
