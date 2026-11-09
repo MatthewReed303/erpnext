@@ -11,6 +11,7 @@ from erpnext.erpnext_integrations.doctype.wise_settings.wise_settings import (
 	add_bank_accounts,
 	automatic_synchronization,
 	enqueue_synchronization,
+	get_gl_account,
 	sync_transactions,
 	utc_now,
 )
@@ -68,6 +69,7 @@ class FakeWise:
 
 class TestWiseSettings(ERPNextTestSuite):
 	def setUp(self):
+		FakeWise.transactions = []
 		settings = frappe.get_single("Wise Settings")
 		settings.update(
 			{"enabled": 1, "api_token": "test-token", "company": "_Test Company", "profile_id": "100"}
@@ -188,3 +190,19 @@ class TestWiseSettings(ERPNextTestSuite):
 		with patch(f"{WISE_SETTINGS}.enqueue_synchronization") as enqueue:
 			automatic_synchronization()
 		enqueue.assert_not_called()
+
+	def test_a_disabled_feed_doesnt_sync(self):
+		add_bank_accounts()
+		FakeWise.transactions = [wise_transaction("DEPOSIT-OFF", 10.0)]
+		frappe.db.set_single_value("Wise Settings", "enabled", 0)
+		sync_transactions()
+		self.assertFalse(frappe.db.exists("Bank Transaction", {"transaction_id": "DEPOSIT-OFF"}))
+		self.assertRaises(frappe.ValidationError, enqueue_synchronization)
+
+	def test_an_account_of_the_same_name_in_another_currency_is_left_alone(self):
+		eur = get_gl_account("_Test Company", "_Test Wise Account", "EUR")
+		usd = get_gl_account("_Test Company", "_Test Wise Account", "USD")
+		self.assertNotEqual(eur, usd)
+		self.assertEqual(frappe.db.get_value("Account", usd, "account_name"), "_Test Wise Account 2")
+		self.assertEqual(frappe.db.get_value("Account", usd, "account_currency"), "USD")
+		self.assertEqual(get_gl_account("_Test Company", "_Test Wise Account", "USD"), usd)

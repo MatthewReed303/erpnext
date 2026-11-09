@@ -63,7 +63,7 @@ def get_profiles():
 def add_bank_accounts():
 	"""Make or update a company Bank Account for each of the profile's Wise balances, with the bank
 	details Wise gives for it."""
-	frappe.has_permission("Wise Settings", throw=True)
+	frappe.has_permission("Wise Settings", ptype="write", throw=True)
 
 	settings = get_settings()
 	wise = WiseConnector(settings)
@@ -152,6 +152,16 @@ def get_gl_account(company, account_name, currency):
 	)
 	if name:
 		return name
+	# an account of that name in another currency is left alone: the new one is numbered
+	base_name, number = account_name, 1
+	while frappe.db.exists("Account", {"company": company, "account_name": account_name}):
+		number += 1
+		account_name = f"{base_name} {number}"
+		name = frappe.db.get_value(
+			"Account", {"company": company, "account_name": account_name, "account_currency": currency}
+		)
+		if name:
+			return name
 
 	# the Bank group, else the group the company's bank accounts are in
 	parent_account = frappe.db.get_value(
@@ -186,7 +196,7 @@ def get_gl_account(company, account_name, currency):
 
 def automatic_synchronization():
 	settings = frappe.get_single("Wise Settings")
-	# only once it is set up, so an unfinished setup doesn't fail every five minutes
+	# only once it is set up, so an unfinished setup doesn't fail every hour
 	if (
 		settings.enabled
 		and settings.automatic_sync
@@ -199,7 +209,9 @@ def automatic_synchronization():
 
 @frappe.whitelist(methods=["POST"])
 def enqueue_synchronization():
-	frappe.has_permission("Wise Settings", throw=True)
+	frappe.has_permission("Wise Settings", ptype="write", throw=True)
+	if not frappe.db.get_single_value("Wise Settings", "enabled"):
+		frappe.throw(_("Enable Wise Settings to sync transactions"))
 
 	frappe.enqueue(
 		"erpnext.erpnext_integrations.doctype.wise_settings.wise_settings.sync_transactions",
@@ -213,6 +225,8 @@ def sync_transactions():
 	"""Import the new transactions of each Wise balance that has a Bank Account, from the date it was
 	last read up to (a few days earlier, for transactions Wise dates back), or the last twelve months
 	for a new Bank Account."""
+	if not frappe.db.get_single_value("Wise Settings", "enabled"):
+		return
 	settings = get_settings()
 	wise = WiseConnector(settings)
 	end = utc_now()
@@ -272,7 +286,7 @@ def sync_transactions():
 
 def new_bank_transaction(transaction, bank_account):
 	"""Make a Bank Transaction for a statement transaction not imported yet. The amount is what moved the
-	balance, and Wise's fees are outside it."""
+	balance; Wise's fees are part of a withdrawal, as its included fee."""
 	if frappe.db.exists(
 		"Bank Transaction", {"transaction_id": transaction["referenceNumber"], "bank_account": bank_account}
 	):

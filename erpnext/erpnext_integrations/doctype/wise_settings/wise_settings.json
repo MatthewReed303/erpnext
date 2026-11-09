@@ -30,7 +30,7 @@
   {
    "default": "0",
    "depends_on": "enabled",
-   "description": "Import new transactions from Wise every five minutes",
+   "description": "Import new transactions from Wise every hour",
    "fieldname": "automatic_sync",
    "fieldtype": "Check",
    "label": "Synchronize Automatically"

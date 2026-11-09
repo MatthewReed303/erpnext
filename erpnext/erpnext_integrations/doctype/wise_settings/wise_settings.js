@@ -45,7 +45,7 @@ frappe.ui.form.on("Wise Settings", {
 					frappe.show_alert({
 						message: __(
 							"The sync has started in the background, please check the {0} list for new records.",
-							[frappe.utils.get_form_link("Bank Transaction", "", true, __("Bank Transaction"))]
+							[`<a href="/app/bank-transaction">${__("Bank Transaction")}</a>`]
 						),
 						indicator: "blue",
 					});
