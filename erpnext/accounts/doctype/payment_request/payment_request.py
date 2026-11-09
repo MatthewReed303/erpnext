@@ -746,7 +746,9 @@ class PaymentRequest(Document):
 		message = frappe.render_template(
 			self.message or get_dummy_message(context["doc"]), context, restrict_globals=True
 		)
-		if self.payment_url and self.payment_url not in message:
+		if self.payment_url and not any(
+			url in message for url in (self.payment_url, escape_html(self.payment_url))
+		):
 			# a message written without the link, as the Payment Gateway Account's default is
 			message += f'<p><a href="{escape_html(self.payment_url)}">{_("Make Payment")}</a></p>'
 		return message
