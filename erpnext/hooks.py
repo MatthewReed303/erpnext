@@ -539,6 +539,7 @@ scheduler_events = {
 		"erpnext.projects.doctype.project.project.collect_project_status",
 		"erpnext.projects.doctype.project.project.project_status_update_reminder",
 		"erpnext.erpnext_integrations.doctype.plaid_settings.plaid_settings.automatic_synchronization",
+		"erpnext.erpnext_integrations.doctype.wise_settings.wise_settings.automatic_synchronization",
 		"erpnext.utilities.doctype.video.video.update_youtube_data",
 		"erpnext.accounts.doctype.bank_transaction_rule.bank_transaction_rule.scheduler_run_rule_evaluation",
 	],
