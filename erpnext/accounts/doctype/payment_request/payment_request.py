@@ -5,7 +5,7 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.query_builder.functions import Sum
-from frappe.utils import cint, flt, nowdate
+from frappe.utils import cint, escape_html, flt, nowdate
 from frappe.utils.background_jobs import enqueue
 
 from erpnext import get_company_currency
@@ -743,8 +743,16 @@ class PaymentRequest(Document):
 			"payment_request": self,
 		}
 
-		if self.message:
-			return frappe.render_template(self.message, context, restrict_globals=True)
+		# nosemgrep: frappe-semgrep-rules.rules.security.frappe-ssti -- the message is written by staff or is ERPNext's default, rendered with restricted globals
+		message = frappe.render_template(
+			self.message or get_dummy_message(context["doc"]), context, restrict_globals=True
+		)
+		if self.payment_url and not any(
+			url in message for url in (self.payment_url, escape_html(self.payment_url))
+		):
+			# a message written without the link, as the Payment Gateway Account's default is
+			message += f'<p><a href="{escape_html(self.payment_url)}">{_("Make Payment")}</a></p>'
+		return message
 
 	def set_failed(self):
 		pass
