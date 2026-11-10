@@ -743,6 +743,7 @@ class PaymentRequest(Document):
 			"payment_request": self,
 		}
 
+		# nosemgrep: frappe-semgrep-rules.rules.security.frappe-ssti -- the message is written by staff or is ERPNext's default, rendered with restricted globals
 		message = frappe.render_template(
 			self.message or get_dummy_message(context["doc"]), context, restrict_globals=True
 		)
