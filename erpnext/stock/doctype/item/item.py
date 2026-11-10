@@ -968,11 +968,14 @@ class Item(Document):
 
 	def validate_variant(self):
 		if self.variant_of:
+			if self.has_variants or self.variant_of == self.name:
+				frappe.throw(_("A template item can't be a variant of another item."))
 			has_variants, based_on = frappe.get_value(
 				"Item", self.variant_of, ["has_variants", "variant_based_on"]
 			)
 			if not has_variants:
 				frappe.throw(_("Item {0} is not a template item.").format(frappe.bold(self.variant_of)))
+			self.validate_joining_template()
 
 			if based_on == "Item Attribute":
 				previous_doc = self.get_doc_before_save()
@@ -1121,6 +1124,30 @@ class Item(Document):
 			frappe.throw(
 				_("Value cannot be changed for {0}").format(_(self.meta.get_label("variant_of"))),
 				frappe.CannotChangeConstantError,
+			)
+
+	def validate_joining_template(self):
+		"""An item with stock that becomes a variant keeps its stock settings: the template's would be
+		copied onto it, and can't change after transactions, so they have to match already."""
+		before = self.get_doc_before_save()
+		if not before or before.variant_of or not self.stock_ledger_created():
+			return
+		copied = set(
+			frappe.get_all(
+				"Variant Field", filters={"parenttype": "Item Variant Settings"}, pluck="field_name"
+			)
+		)
+		template = frappe.get_cached_doc("Item", self.variant_of)
+		different = [
+			_(self.meta.get_label(field))
+			for field in ("is_stock_item", "has_batch_no", "has_serial_no", "valuation_method")
+			if field in copied and cstr(self.get(field)) != cstr(template.get(field))
+		]
+		if different:
+			frappe.throw(
+				_(
+					"{0} has stock, so it can only become a variant of {1} when these match: {2}. Change the template to match first."
+				).format(frappe.bold(self.name), frappe.bold(self.variant_of), ", ".join(different))
 			)
 
 	def becomes_variant(self) -> bool:
