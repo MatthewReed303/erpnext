@@ -1221,6 +1221,115 @@ class TestItem(ERPNextTestSuite):
 			item_doc.has_variants = 1
 			self.assertRaises(StockExistsForTemplate, item_doc.save)
 
+	def stocked_item_and_template(self, code):
+		for name in (f"{code}-V-C", code, f"{code}-V"):
+			frappe.delete_doc_if_exists("Item", name, force=1)
+		for name, values in (("_Test Coating", ("None", "Conformal")), ("_Test Mount", ("Standard", "DIN"))):
+			if not frappe.db.exists("Item Attribute", name):
+				frappe.get_doc(
+					{
+						"doctype": "Item Attribute",
+						"attribute_name": name,
+						"item_attribute_values": [
+							{"attribute_value": value, "abbr": value[0]} for value in values
+						],
+					}
+				).insert()
+		item = make_item(code, {"is_stock_item": 1, "stock_uom": "Nos"})
+		make_stock_entry(item_code=code, to_warehouse="_Test Warehouse - _TC", qty=5, rate=10)
+		template = make_item(
+			f"{code}-V",
+			{
+				"is_stock_item": 1,
+				"stock_uom": "Nos",
+				"has_variants": 1,
+				"variant_based_on": "Item Attribute",
+				"attributes": [{"attribute": "_Test Coating"}],
+			},
+		)
+		return frappe.get_doc("Item", item.name), template
+
+	def test_an_item_with_stock_becomes_a_variant_and_keeps_it(self):
+		item, template = self.stocked_item_and_template("_Test Stocked Board")
+		item.variant_of = template.name
+		item.append("attributes", {"attribute": "_Test Coating", "attribute_value": "None"})
+		item.save()
+		self.assertEqual(frappe.db.get_value("Item", item.name, "variant_of"), template.name)
+		self.assertEqual(
+			frappe.db.get_value(
+				"Bin", {"item_code": item.name, "warehouse": "_Test Warehouse - _TC"}, "actual_qty"
+			),
+			5,
+		)
+		create_variant(template.name, {"_Test Coating": "Conformal"}).save()
+
+		# it can't hold variants itself, or move to another template
+		item.reload()
+		item.has_variants = 1
+		self.assertRaises(frappe.ValidationError, item.save)
+		other = make_item(
+			"_Test Stocked Board Other-V",
+			{
+				"has_variants": 1,
+				"variant_based_on": "Item Attribute",
+				"attributes": [{"attribute": "_Test Coating"}],
+			},
+		)
+		item.reload()
+		item.variant_of = other.name
+		self.assertRaises(frappe.CannotChangeConstantError, item.save)
+
+	def test_an_item_with_stock_joins_a_template_only_with_its_stock_settings(self):
+		settings = frappe.get_doc("Item Variant Settings")
+		if "has_batch_no" not in [row.field_name for row in settings.fields]:
+			settings.append("fields", {"field_name": "has_batch_no"})
+			settings.save()
+			self.addCleanup(
+				lambda: frappe.db.delete(
+					"Variant Field", {"parenttype": "Item Variant Settings", "field_name": "has_batch_no"}
+				)
+			)
+		item, template = self.stocked_item_and_template("_Test Stocked Batch Board")
+		template.has_batch_no = 1
+		template.create_new_batch = 1
+		template.save()
+		item.variant_of = template.name
+		item.append("attributes", {"attribute": "_Test Coating", "attribute_value": "None"})
+		self.assertRaisesRegex(frappe.ValidationError, "when these match", item.save)
+
+	def test_a_template_isnt_a_variant(self):
+		_item, template = self.stocked_item_and_template("_Test Template Board")
+		other = make_item(
+			"_Test Template Board Other-V",
+			{
+				"has_variants": 1,
+				"variant_based_on": "Item Attribute",
+				"attributes": [{"attribute": "_Test Coating"}],
+			},
+		)
+		for parent in (other.name, template.name):
+			template.reload()
+			template.variant_of = parent
+			self.assertRaisesRegex(frappe.ValidationError, "can't be a variant", template.save)
+
+	def test_a_variant_with_stock_gets_a_new_attribute_but_keeps_its_values(self):
+		item, template = self.stocked_item_and_template("_Test Stocked Mount Board")
+		item.variant_of = template.name
+		item.append("attributes", {"attribute": "_Test Coating", "attribute_value": "None"})
+		item.save()
+		template.append("attributes", {"attribute": "_Test Mount"})
+		template.save()
+		item.reload()
+		item.append("attributes", {"attribute": "_Test Mount", "attribute_value": "Standard"})
+		item.save()
+		self.assertEqual(
+			[(row.attribute, row.attribute_value) for row in frappe.get_doc("Item", item.name).attributes],
+			[("_Test Coating", "None"), ("_Test Mount", "Standard")],
+		)
+		item.reload()
+		item.attributes[0].attribute_value = "Conformal"
+		self.assertRaises(frappe.ValidationError, item.save)
+
 	def test_invalid_upc_a_barcode_is_refused(self):
 		from erpnext.stock.doctype.item.item import InvalidBarcode
 

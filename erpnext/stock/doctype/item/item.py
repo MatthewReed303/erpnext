@@ -253,6 +253,7 @@ class Item(Document):
 		self.update_bom_item_desc()
 
 		self.validate_variant()
+		self.validate_variant_of_change()
 		self.validate_has_variants()
 		self.validate_attributes_in_variants()
 		self.validate_stock_exists_for_template_item()
@@ -967,11 +968,14 @@ class Item(Document):
 
 	def validate_variant(self):
 		if self.variant_of:
+			if self.has_variants or self.variant_of == self.name:
+				frappe.throw(_("A template item can't be a variant of another item."))
 			has_variants, based_on = frappe.get_value(
 				"Item", self.variant_of, ["has_variants", "variant_based_on"]
 			)
 			if not has_variants:
 				frappe.throw(_("Item {0} is not a template item.").format(frappe.bold(self.variant_of)))
+			self.validate_joining_template()
 
 			if based_on == "Item Attribute":
 				previous_doc = self.get_doc_before_save()
@@ -1096,9 +1100,8 @@ class Item(Document):
 
 	def validate_stock_exists_for_template_item(self):
 		if self.stock_ledger_created() and self._doc_before_save:
-			if (
-				cint(self._doc_before_save.has_variants) != cint(self.has_variants)
-				or self._doc_before_save.variant_of != self.variant_of
+			if cint(self._doc_before_save.has_variants) != cint(self.has_variants) or (
+				self._doc_before_save.variant_of != self.variant_of and not self.becomes_variant()
 			):
 				frappe.throw(
 					_(
@@ -1107,13 +1110,59 @@ class Item(Document):
 					StockExistsForTemplate,
 				)
 
-			if self.has_variants or self.variant_of:
-				if not self.is_child_table_same("attributes"):
-					frappe.throw(
-						_(
-							"Cannot change Attributes after stock transaction. Make a new Item and transfer stock to the new Item"
-						)
+			if (self.has_variants or self.variant_of) and not self.attributes_only_added():
+				frappe.throw(
+					_(
+						"Cannot change Attributes after stock transaction. Make a new Item and transfer stock to the new Item"
 					)
+				)
+
+	def validate_variant_of_change(self):
+		"""Variant Of is set once: an item may become a variant, but not move to another template."""
+		before = self.get_doc_before_save()
+		if before and before.variant_of and before.variant_of != self.variant_of:
+			frappe.throw(
+				_("Value cannot be changed for {0}").format(_(self.meta.get_label("variant_of"))),
+				frappe.CannotChangeConstantError,
+			)
+
+	def validate_joining_template(self):
+		"""An item with stock that becomes a variant keeps its stock settings: the template's would be
+		copied onto it, and can't change after transactions, so they have to match already."""
+		before = self.get_doc_before_save()
+		if not before or before.variant_of or not self.stock_ledger_created():
+			return
+		copied = set(
+			frappe.get_all(
+				"Variant Field", filters={"parenttype": "Item Variant Settings"}, pluck="field_name"
+			)
+		)
+		template = frappe.get_cached_doc("Item", self.variant_of)
+		different = [
+			_(self.meta.get_label(field))
+			for field in ("is_stock_item", "has_batch_no", "has_serial_no", "valuation_method")
+			if field in copied and cstr(self.get(field)) != cstr(template.get(field))
+		]
+		if different:
+			frappe.throw(
+				_(
+					"{0} has stock, so it can only become a variant of {1} when these match: {2}. Change the template to match first."
+				).format(frappe.bold(self.name), frappe.bold(self.variant_of), ", ".join(different))
+			)
+
+	def becomes_variant(self) -> bool:
+		"""An item with stock may become a variant of a template, keeping its stock and history: the
+		template holds no stock, and the item's stock settings are checked as on any other save."""
+		return not self._doc_before_save.variant_of and bool(self.variant_of) and not self.has_variants
+
+	def attributes_only_added(self) -> bool:
+		"""Whether every attribute value is as before, so a variant with stock can be given a value for
+		an attribute its template gained."""
+
+		def values(doc):
+			return {(row.attribute, cstr(row.attribute_value)) for row in doc.get("attributes")}
+
+		return values(self._doc_before_save) <= values(self)
 
 	def validate_variant_based_on_change(self):
 		if not self.is_new() and (
